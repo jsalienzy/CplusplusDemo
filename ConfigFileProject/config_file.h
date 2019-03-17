@@ -1,76 +1,57 @@
 /*
- *Copyright (c) 2018，博众精工科技股份有限公司北京技术研究院
+ *Copyright (c) 2018
  *All rights reserved.
  *
- *文件名称：ConfigFile.h
+ *文件名称：config_file.h
  *摘要：配置文件的读写
- *注意：1. the comments will disappear when saving config
- *	    2. the group and key will be sorted by reversed alpha order when saving config
- *当前版本：1.0
- *作者：江山/王洋
- *完成日期：2018年6月22日
+ *注意：1. the comments will disappear when saving config file.
+ *	    2. the group and key will be sorted by reversed alpha order when saving config file
+ *当前版本：0.0.0.1
+ *作者：jsalienzy/dzjiangshan@163.com
+ *完成日期：2019年3月17日
  */
 
 #ifndef CONFIGFILE_H_
 #define CONFIGFILE_H_
 
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <map>
-#include <functional>
-#include <cctype>
 namespace js
 {
 	class ConfigFile
 	{
 	public:
 		ConfigFile();
-        ConfigFile(const std::string &fileName, std::string delimiter = "=", std::string commentSymbol = "#");
+        ConfigFile(const char *file_name, const char *delimiter = "=", const char *comment_symbol = "#");
 		~ConfigFile();
-		bool LoadFile(const std::string &fileName, std::string delimiter = "=", std::string commentSymbol = "#");
-        bool FileExist(const std::string &fileName);
-        bool SetFileName(const std::string &fileName);
-        std::string GetFileName() const;
-        std::string GetDelimiter() const;
-        std::string GetCommentSymbol() const;
-        bool SetDelimiter(const std::string& delimiter);
-        bool SetCommentSymbol(const std::string& commentSymbol);
+		bool LoadFile(const char *file_name, const char *delimiter = "=", const char *comment_symbol = "#");
+        bool FileExist(const char *file_name);
+        void SetFileName(const char *file_name);
+        const char *GetFileName() const;
+        const char *GetDelimiter() const;
+        const char *GetCommentSymbol() const;
+        void SetDelimiter(const char *delimiter);
+        void SetCommentSymbol(const char *comment_symbol);
 		bool SaveFile();
-		bool SaveFileAs(const std::string &fileName);
-        
-        bool AddString(const std::string &key, const std::string &value, std::string group = "default");
-        bool AddInteger(const std::string &key, const int &value, std::string group = "default");
-        bool AddDouble(const std::string &key, const double &value, std::string group = "default");
-        bool AddBoolean(const std::string &key, const bool &value, std::string group = "default");
-        bool Remove(const std::string &key, std::string group = "default");
-
-        bool SetString(const std::string &key, const std::string &value, std::string group = "default");
-        bool GetString(const std::string &key, std::string *value, std::string group = "default");
-        
-        bool SetInteger(const std::string &key, const int &value, std::string group = "default");
-        bool GetInteger(const std::string &key, int *value, std::string group = "default");
-        
-        bool SetDouble(const std::string &key, const double &value, std::string group = "default");
-        bool GetDouble(const std::string &key, double *value, std::string group = "default");
-        
-        bool SetBoolean(const std::string &key, const bool &value, std::string group = "default");
-        bool GetBoolean(const std::string &key, bool *value, std::string group = "default");
+		bool SaveFileAs(const char *file_name);
+        bool AddString(const char *key, const char *value, const char *group = "default");
+        bool AddInteger(const char *key, int value, const char *group = "default");
+        bool AddDouble(const char *key, double value, const char *group = "default");
+        bool AddBoolean(const char *key, bool value, const char *group = "default");
+        bool Remove(const char *key, const char *group = "default");
+        bool SetString(const char *key, const char *value, const char *group = "default");
+        bool GetString(const char *key, char *value, int size, const char *group = "default");
+        bool SetInteger(const char *key, int value, const char *group = "default");
+        bool GetInteger(const char *key, int *value, const char *group = "default"); 
+        bool SetDouble(const char *key, double value, const char *group = "default");
+        bool GetDouble(const char *key, double *value, const char *group = "default");
+        bool SetBoolean(const char *key, bool value, const char *group = "default");
+        bool GetBoolean(const char *key, bool *value, const char *group = "default");
+		const char *GetLastError();
 	
 	private:
-		static bool TrimString(std::string & str);
-		bool SetValue(std::string group, std::string key, std::string value);
-		bool GetValue(std::string group, std::string key, std::string *value);
-        bool AddValue(std::string group, std::string key, std::string value);
-	
-	private:
-		std::string m_FileName;
-        std::string m_Delimiter;
-        std::string m_CommentSymbol;
-		bool m_Modifyed;
-		typedef std::map<std::string, std::string, std::greater<std::string>> Pair;
-		typedef std::map<std::string, Pair,   std::greater<std::string>> Paragraph;
-		Paragraph m_ParaGroup;
+		ConfigFile(const ConfigFile &config_file) = delete;
+		ConfigFile &operator = (const ConfigFile &config_file) = delete;
+		class ConfigFileImplement;
+		ConfigFileImplement *config_file_implement_;
 	};
 }
 

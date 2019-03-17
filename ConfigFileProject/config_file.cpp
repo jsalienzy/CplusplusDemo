@@ -1,378 +1,478 @@
+#include "stdafx.h"
 #include "config_file.h"
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <map>
+#include <functional>
+#include <cctype>
+#include <cassert>
 
-using namespace js;
-
-const std::string DEFAULT_GROUP("default");
-
-ConfigFile::ConfigFile():
-    m_Delimiter(std::string(1, '=')),
-    m_CommentSymbol(std::string(1, '#')),
-    m_Modifyed(false)
+namespace js 
 {
-}
+	const std::string kDefaultGroup("default");
 
-ConfigFile::ConfigFile(const std::string &fileName, std::string delimiter, std::string commentSymbol):
-    m_FileName(fileName),
-    m_Delimiter(delimiter),
-    m_CommentSymbol(commentSymbol),
-    m_Modifyed(false)
-{
-    LoadFile(fileName, delimiter, commentSymbol);
-}
-
-ConfigFile::~ConfigFile()
-{
-	if (m_Modifyed)
+	class ConfigFile::ConfigFileImplement
 	{
-		SaveFile();
+	public:
+		static bool TrimString(std::string *str);
+		bool SetValue(const std::string &group, const std::string &key, const std::string &value);
+		bool GetValue(const std::string &group, const std::string &key, std::string *value);
+		bool AddValue(const std::string &group, const std::string &key, const std::string &value);
+		std::string file_name_;
+		std::string delimiter_;
+		std::string comment_symbol_;
+		bool modifyed_flag_;
+		typedef std::map<std::string, std::string, std::greater<std::string>> Pair;
+		typedef std::map<std::string, Pair, std::greater<std::string>> Paragraph;
+		Paragraph paragraph_group_;
+		std::string error_info_;
+	};
+
+	ConfigFile::ConfigFile() :
+		config_file_implement_(new ConfigFileImplement)
+	{
+		config_file_implement_->delimiter_ = std::string(1, '=');
+		config_file_implement_->comment_symbol_ = std::string(1, '#');
+		config_file_implement_->modifyed_flag_ = false;
 	}
-}
 
-bool ConfigFile::LoadFile(const std::string &fileName, std::string delimiter, std::string commentSymbol)
-{
-    m_FileName = fileName;
-    m_Delimiter = delimiter;
-    m_CommentSymbol = commentSymbol;
-	m_ParaGroup.clear();
-	std::ifstream fin(m_FileName);
-	if (!fin)
+	ConfigFile::ConfigFile(const char *file_name, const char *delimiter, const char *comment_symbol) :
+		config_file_implement_(new ConfigFileImplement)
 	{
-		return false;
+		assert(file_name);
+		assert(delimiter);
+		assert(comment_symbol);
+		config_file_implement_->file_name_ = file_name;
+		config_file_implement_->delimiter_ = delimiter;
+		config_file_implement_->comment_symbol_ = comment_symbol;
+		config_file_implement_->modifyed_flag_ = false;
+		LoadFile(file_name, delimiter, comment_symbol);
 	}
-	Pair pairKey;                            
-	std::string currentGroup = DEFAULT_GROUP;
-	std::string line;                        
-    const std::string::size_type delimLength = m_Delimiter.length();
-	while (getline(fin, line))
+
+	ConfigFile::~ConfigFile()
 	{
-		TrimString(line);
-		if (0 == line.length())
+		if (config_file_implement_->modifyed_flag_)
 		{
-			continue;
+			SaveFile();
 		}
-        std::string::size_type commentIndex = line.find(m_CommentSymbol);
-        if ((commentIndex != std::string::npos) && (commentIndex != 0))
-        {
-            line = line.substr(0, commentIndex);
-        }
-
-        std::string::size_type index = line.find(m_Delimiter);
-        if (index != std::string::npos)
-        {
-            std::string key = line.substr(0, index);
-            line.replace(0, index + delimLength, "");
-            ConfigFile::TrimString(key);
-            ConfigFile::TrimString(line);
-            pairKey[key] = line;
-        }
-        else
-        {
-            if (line[0] == '[' && line[line.length() - 1] == ']')
-            {
-                line.erase(line.length() - 1);
-                line.erase(0, 1);             
-                m_ParaGroup[currentGroup] = pairKey;
-                currentGroup = line;
-                pairKey.clear();
-            }
-        }
-        m_ParaGroup[currentGroup] = pairKey;
 	}
-	fin.close();
-	return true;
-}
 
-bool ConfigFile::FileExist(const std::string &fileName)
-{
-    bool exist = false;
-    std::ifstream in(fileName);
-    if (in)
-    {
-        exist = true;
-    }
-    return exist;
-}
-
-bool ConfigFile::SetFileName(const std::string & fileName)
-{
-    m_FileName = fileName;
-    return true;
-}
-
-std::string ConfigFile::GetFileName() const
-{
-    return m_FileName;
-}
-
-std::string ConfigFile::GetDelimiter() const
-{
-    return m_Delimiter;
-}
-
-std::string ConfigFile::GetCommentSymbol() const
-{
-    return m_CommentSymbol;
-}
-
-bool ConfigFile::SetDelimiter(const std::string & delimiter)
-{
-    m_Delimiter = delimiter;
-    return true;
-}
-
-bool ConfigFile::SetCommentSymbol(const std::string & commentSymbol)
-{
-    m_CommentSymbol = commentSymbol;
-    return true;
-}
-
-bool ConfigFile::SaveFile()
-{
-	return SaveFileAs(m_FileName);
-}
-
-bool ConfigFile::SaveFileAs(const std::string &fileName)
-{
-	std::ofstream fout(fileName);
-	if (!fout)
+	bool ConfigFile::LoadFile(const char *file_name, const char *delimiter, const char *comment_symbol)
 	{
-		return false;
-	}
-	Pair pairKey = m_ParaGroup[DEFAULT_GROUP];
-	Pair::iterator pairKeyIter;
-	Paragraph::iterator paraGroupIter;
-    std::string delimiter = std::string(" ") + m_Delimiter + std::string(" ");
-	for (pairKeyIter = pairKey.begin(); pairKeyIter != pairKey.end(); ++pairKeyIter)
-	{
-        fout << pairKeyIter->first << delimiter << pairKeyIter->second << std::endl;
-	}
-	fout << std::endl;
-
-	for (paraGroupIter = m_ParaGroup.begin(); paraGroupIter != m_ParaGroup.end(); ++paraGroupIter)
-	{
-		if (paraGroupIter->first == DEFAULT_GROUP)
+		assert(file_name);
+		assert(delimiter);
+		assert(comment_symbol);
+		config_file_implement_->file_name_ = file_name;
+		config_file_implement_->delimiter_ = delimiter;
+		config_file_implement_->comment_symbol_ = comment_symbol;
+		config_file_implement_->paragraph_group_.clear();
+		std::ifstream file(config_file_implement_->file_name_);
+		if (!file)
 		{
-			continue;
+			config_file_implement_->error_info_ = "文件打开失败！";
+			return false;
 		}
-		fout << '[' << paraGroupIter->first << ']' << std::endl;
-		pairKey = paraGroupIter->second;
+		ConfigFileImplement::Pair pairKey;
+		std::string currentGroup = kDefaultGroup;
+		std::string line;
+		const std::string::size_type delimLength = config_file_implement_->delimiter_.length();
+		while (getline(file, line))
+		{
+			config_file_implement_->TrimString(&line);
+			if (0 == line.length())
+			{
+				continue;
+			}
+			std::string::size_type commentIndex = line.find(config_file_implement_->comment_symbol_);
+			if ((commentIndex != std::string::npos) && (commentIndex != 0))
+			{
+				line = line.substr(0, commentIndex);
+			}
+
+			std::string::size_type index = line.find(config_file_implement_->delimiter_);
+			if (index != std::string::npos)
+			{
+				std::string key = line.substr(0, index);
+				line.replace(0, index + delimLength, "");
+				ConfigFile::config_file_implement_->TrimString(&key);
+				ConfigFile::config_file_implement_->TrimString(&line);
+				pairKey[key] = line;
+			}
+			else
+			{
+				if (line[0] == '[' && line[line.length() - 1] == ']')
+				{
+					line.erase(line.length() - 1);
+					line.erase(0, 1);
+					config_file_implement_->paragraph_group_[currentGroup] = pairKey;
+					currentGroup = line;
+					pairKey.clear();
+				}
+			}
+			config_file_implement_->paragraph_group_[currentGroup] = pairKey;
+		}
+		file.close();
+		return true;
+	}
+
+	bool ConfigFile::FileExist(const char *file_name)
+	{
+		assert(file_name);
+		std::ifstream file(file_name);
+		if (!file)
+		{
+			config_file_implement_->error_info_ = "文件不存在！";
+			return false;
+		}
+		return true;
+	}
+
+	void ConfigFile::SetFileName(const char *file_name)
+	{
+		assert(file_name);
+		config_file_implement_->file_name_ = file_name;
+	}
+
+	const char *ConfigFile::GetFileName() const
+	{
+		return config_file_implement_->file_name_.c_str();
+	}
+
+	const char *ConfigFile::GetDelimiter() const
+	{
+		return config_file_implement_->delimiter_.c_str();
+	}
+
+	const char *ConfigFile::GetCommentSymbol() const
+	{
+		return config_file_implement_->comment_symbol_.c_str();
+	}
+
+	void ConfigFile::SetDelimiter(const char *delimiter)
+	{
+		assert(delimiter);
+		config_file_implement_->delimiter_ = delimiter;
+	}
+
+	void ConfigFile::SetCommentSymbol(const char *comment_symbol)
+	{
+		assert(comment_symbol);
+		config_file_implement_->comment_symbol_ = comment_symbol;
+	}
+
+	bool ConfigFile::SaveFile()
+	{
+		return SaveFileAs(config_file_implement_->file_name_.c_str());
+	}
+
+	bool ConfigFile::SaveFileAs(const char *fileName)
+	{
+		std::ofstream file(fileName);
+		if (!file)
+		{
+			config_file_implement_->error_info_ = "文件新建失败！";
+			return false;
+		}
+		ConfigFileImplement::Pair pairKey = config_file_implement_->paragraph_group_[kDefaultGroup];
+		ConfigFileImplement::Pair::iterator pairKeyIter;
+		ConfigFileImplement::Paragraph::iterator paraGroupIter;
+		std::string delimiter = std::string(" ") + config_file_implement_->delimiter_ + std::string(" ");
 		for (pairKeyIter = pairKey.begin(); pairKeyIter != pairKey.end(); ++pairKeyIter)
 		{
-			fout << pairKeyIter->first << delimiter << pairKeyIter->second << std::endl;
+			file << pairKeyIter->first << delimiter << pairKeyIter->second << std::endl;
 		}
-		fout << std::endl;
-	}
-    m_Modifyed = false;
-	return true;
-}
+		file << std::endl;
 
-bool ConfigFile::AddString(const std::string & key, const std::string & value, std::string group)
-{
-    return AddValue(group, key, value);
-}
-
-bool ConfigFile::AddInteger(const std::string & key, const int & value, std::string group)
-{
-    return AddValue(group, key, std::to_string(value));
-}
-
-bool ConfigFile::AddDouble(const std::string & key, const double & value, std::string group)
-{
-    return AddValue(group, key, std::to_string(value));
-}
-
-bool ConfigFile::AddBoolean(const std::string & key, const bool & value, std::string group)
-{
-    std::string str = value ? "true" : "false";
-    return AddValue(group, key, str);
-}
-
-bool ConfigFile::Remove(const std::string & key, std::string group)
-{
-    bool status = false;
-    std::string szValue;
-    Paragraph::iterator paraGroupIter = m_ParaGroup.find(group);
-    if (paraGroupIter != m_ParaGroup.end())
-    {
-        Pair &pairKey = paraGroupIter->second;
-        Pair::iterator paraKeyIter = pairKey.find(key);
-        if (paraKeyIter != pairKey.end())
-        {
-            status = true;
-            pairKey.erase(key);
-        }
-        else
-        {
-            status = false;
-        }
-    }
-    else
-    {
-        status = false;
-    }
-    return status;
-}
-
-bool ConfigFile::SetString(const std::string &key, const std::string &value, std::string group)
-{
-	return SetValue(group, key, value);
-}
-
-bool ConfigFile::GetString(const std::string &key, std::string *value, std::string group)
-{
-    return GetValue(group, key, value);
-}
-
-bool ConfigFile::SetInteger(const std::string &key, const int &value, std::string group)
-{
-	return SetValue(group, key, std::to_string(value));
-}
-
-bool ConfigFile::GetInteger(const std::string &key, int *value, std::string group)
-{
-    std::string str;
-    bool status = GetValue(group, key, &str);
-    try
-    {
-        *value = std::stoi(str);
-    }
-    catch (std::exception &e)
-    {
-        return false;
-    }
-    return status;
-}
-
-bool ConfigFile::SetDouble(const std::string &key, const double &value, std::string group)
-{
-    return SetValue(group, key, std::to_string(value));
-}
-
-bool ConfigFile::GetDouble(const std::string &key, double *value, std::string group)
-{
-    std::string str;
-    bool status = GetValue(group, key, &str);
-    try
-    {
-        *value = std::stod(str);
-    }
-    catch (std::exception &e)
-    {
-        return false;
-    }
-    return status;
-}
-
-bool ConfigFile::SetBoolean(const std::string &key, const bool &value, std::string group)
-{
-	std::string str = value ? "true" : "false";
-    return SetValue(group, key, str);
-}
-
-bool ConfigFile::GetBoolean(const std::string &key, bool *value, std::string group)
-{
-    std::string str;
-	bool status = GetValue(group, key, &str);
-	if (str.length() > 0)
-	{
-		if (str == std::string("true"))
+		for (paraGroupIter = config_file_implement_->paragraph_group_.begin(); paraGroupIter != config_file_implement_->paragraph_group_.end(); ++paraGroupIter)
 		{
-			*value = true;
+			if (paraGroupIter->first == kDefaultGroup)
+			{
+				continue;
+			}
+			file << '[' << paraGroupIter->first << ']' << std::endl;
+			pairKey = paraGroupIter->second;
+			for (pairKeyIter = pairKey.begin(); pairKeyIter != pairKey.end(); ++pairKeyIter)
+			{
+				file << pairKeyIter->first << delimiter << pairKeyIter->second << std::endl;
+			}
+			file << std::endl;
+		}
+		config_file_implement_->modifyed_flag_ = false;
+		return true;
+	}
+
+	bool ConfigFile::AddString(const char *key, const char *value, const char *group)
+	{
+		assert(key);
+		assert(value);
+		assert(group);
+		return config_file_implement_->AddValue(group, key, value);
+	}
+
+	bool ConfigFile::AddInteger(const char *key, int value, const char *group)
+	{
+		assert(key);
+		assert(group);
+		return config_file_implement_->AddValue(group, key, std::to_string(value));
+	}
+
+	bool ConfigFile::AddDouble(const char *key, double value, const char *group)
+	{
+		assert(key);
+		assert(group);
+		return config_file_implement_->AddValue(group, key, std::to_string(value));
+	}
+
+	bool ConfigFile::AddBoolean(const char *key, bool value, const char *group)
+	{
+		assert(key);
+		assert(group);
+		std::string str = value ? "true" : "false";
+		return config_file_implement_->AddValue(group, key, str);
+	}
+
+	bool ConfigFile::Remove(const char *key, const char *group)
+	{
+		assert(key);
+		assert(group);
+		ConfigFileImplement::Paragraph::iterator paraGroupIter = config_file_implement_->paragraph_group_.find(group);
+		if (paraGroupIter != config_file_implement_->paragraph_group_.end())
+		{
+			ConfigFileImplement::Pair &pairKey = paraGroupIter->second;
+			ConfigFileImplement::Pair::iterator paraKeyIter = pairKey.find(key);
+			if (paraKeyIter != pairKey.end())
+			{
+				pairKey.erase(key);
+			}
+			else
+			{
+				config_file_implement_->error_info_ = "key值没有匹配上";
+				return false;
+			}
 		}
 		else
 		{
-			*value = false;
+			config_file_implement_->error_info_ = "group值没有匹配上";
+			return false;
 		}
+		return true;
 	}
-    else
-    {
-        return false;
-    }
-	return status;
-}
 
-bool ConfigFile::TrimString(std::string & str)
-{
-    size_t pos = 0;
-    if (str.length() == 0)
-    {
-    	return true;
-    }
-    for (pos = 0; pos < str.length() && std::isspace(str.at(pos)); pos++)
-    {
-        ;
-    }
-    str = str.substr(pos);
-    if (str.length() == 0)
-    {
-    	return true;
-    }
-    for (pos = str.length() - 1; pos >= 0 && std::isspace(str.at(pos)); pos--)
-    {
-        ;
-    }
-    str.erase(pos + 1);
-    return true;
-}
-
-bool ConfigFile::SetValue(std::string group, std::string key, std::string value)
-{
-    bool status = false;
-    Paragraph::iterator paraGroupIter = m_ParaGroup.find(group);
-    if (paraGroupIter != m_ParaGroup.end())
-    {
-        Pair &pairKey = paraGroupIter->second;
-        Pair::iterator paraKeyIter = pairKey.find(key);
-        if (paraKeyIter != pairKey.end())
-        {
-            m_Modifyed = true;
-            paraKeyIter->second = value;
-            status = true;
-        }
-        else
-        {
-            status = false;
-        }
-    }
-    else
-    {
-        status = false;
-    }
-    return status;
-}
-
-bool ConfigFile::GetValue(std::string group, std::string key, std::string *value)
-{
-    bool status = false;
-	Paragraph::iterator paraGroupIter = m_ParaGroup.find(group);
-	if (paraGroupIter != m_ParaGroup.end())
+	bool ConfigFile::SetString(const char *key, const char *value, const char *group)
 	{
-		Pair pairKey = paraGroupIter->second;
-		Pair::iterator paraKeyIter = pairKey.find(key);
-		if (paraKeyIter != pairKey.end())
-		{
-			*value = paraKeyIter->second;
-            status = true;
-		}
-        else
-        {
-            status = false;
-        }
+		assert(key);
+		assert(value);
+		assert(group);
+		return config_file_implement_->SetValue(group, key, value);
 	}
-    else
-    {
-        status = false;
-    }
-	return status;
-}
 
-bool ConfigFile::AddValue(std::string group, std::string key, std::string value)
-{
-    ConfigFile::TrimString(group);
-    ConfigFile::TrimString(key);
-    m_Modifyed = true;
-    Pair &pairKey = m_ParaGroup[group];
-    pairKey[key] = value;
-    return true;
+	bool ConfigFile::GetString(const char *key, char *value, int size, const char *group)
+	{
+		assert(key);
+		assert(value);
+		assert(group);
+		std::string string_value;
+		if (!config_file_implement_->GetValue(group, key, &string_value))
+		{
+			config_file_implement_->error_info_ = "根据group和key值获取数据失败";
+			return false;
+		}
+		strcpy_s(value, size, string_value.c_str());
+		return true;
+	}
+
+	bool ConfigFile::SetInteger(const char *key, int value, const char *group)
+	{
+		assert(key);
+		assert(group);
+		return config_file_implement_->SetValue(group, key, std::to_string(value));
+	}
+
+	bool ConfigFile::GetInteger(const char *key, int *value, const char *group)
+	{
+		assert(key);
+		assert(value);
+		assert(group);
+		std::string str;
+		if (!config_file_implement_->GetValue(group, key, &str))
+		{
+			config_file_implement_->error_info_ = "没有找到当前索引！";
+			return false;
+		}
+		try
+		{
+			*value = std::stoi(str);
+		}
+		catch (std::exception &e)
+		{
+			config_file_implement_->error_info_ = "获取数据转换为整型失败！";
+			return false;
+		}
+		return true;
+	}
+
+	bool ConfigFile::SetDouble(const char *key, double value, const char *group)
+	{
+		assert(key);
+		assert(group);
+		return config_file_implement_->SetValue(group, key, std::to_string(value));
+	}
+
+	bool ConfigFile::GetDouble(const char *key, double *value, const char *group)
+	{
+		assert(key);
+		assert(value);
+		assert(group);
+		std::string str;
+		if (!config_file_implement_->GetValue(group, key, &str))
+		{
+			config_file_implement_->error_info_ = "根据group和key值获取数据失败！";
+			return false;
+		}
+		try
+		{
+			*value = std::stod(str);
+		}
+		catch (std::exception &e)
+		{
+			config_file_implement_->error_info_ = "数据转换为double型时出错!";
+			return false;
+		}
+		return true;
+	}
+
+	bool ConfigFile::SetBoolean(const char *key, bool value, const char *group)
+	{
+		assert(key);
+		assert(group);
+		std::string str = value ? "true" : "false";
+		return config_file_implement_->SetValue(group, key, str);
+	}
+
+	bool ConfigFile::GetBoolean(const char *key, bool *value, const char *group)
+	{
+		assert(key);
+		assert(value);
+		assert(group);
+		std::string str;
+		if (!config_file_implement_->GetValue(group, key, &str))
+		{
+			config_file_implement_->error_info_ = "根据group和key值获取数据失败！";
+			return false;
+		}
+		if (str.length() > 0)
+		{
+			if (str == std::string("true"))
+			{
+				*value = true;
+			}
+			else
+			{
+				*value = false;
+			}
+		}
+		else
+		{
+			config_file_implement_->error_info_ = "获取的数据为空！";
+			return false;
+		}
+		return true;
+	}
+
+	const char * ConfigFile::GetLastError()
+	{
+		return config_file_implement_->error_info_.c_str();
+	}
+
+	bool ConfigFile::ConfigFileImplement::TrimString(std::string *str)
+	{
+		assert(str);
+		size_t pos = 0;
+		if (str->length() == 0)
+		{
+			return true;
+		}
+		for (pos = 0; pos < str->length() && std::isspace(str->at(pos)); pos++)
+		{
+			;
+		}
+		*str = str->substr(pos);
+		if (str->length() == 0)
+		{
+			return true;
+		}
+		for (pos = str->length() - 1; pos >= 0 && std::isspace(str->at(pos)); pos--)
+		{
+			;
+		}
+		str->erase(pos + 1);
+		return true;
+	}
+
+	bool ConfigFile::ConfigFileImplement::SetValue(const std::string &group, const std::string &key, const std::string &value)
+	{
+		ConfigFileImplement::Paragraph::iterator paraGroupIter = paragraph_group_.find(group);
+		if (paraGroupIter != paragraph_group_.end())
+		{
+			ConfigFileImplement::Pair &pairKey = paraGroupIter->second;
+			ConfigFileImplement::Pair::iterator paraKeyIter = pairKey.find(key);
+			if (paraKeyIter != pairKey.end())
+			{
+				modifyed_flag_ = true;
+				paraKeyIter->second = value;
+			}
+			else
+			{
+				error_info_ = "key值没有匹配上";
+				return false;
+			}
+		}
+		else
+		{
+			error_info_ = "group值没有匹配上";
+			return false;
+		}
+		return true;
+	}
+
+	bool ConfigFile::ConfigFileImplement::GetValue(const std::string &group, const std::string &key, std::string *value)
+	{
+		assert(value);
+		ConfigFileImplement::Paragraph::iterator paraGroupIter = paragraph_group_.find(group);
+		if (paraGroupIter != paragraph_group_.end())
+		{
+			ConfigFileImplement::Pair pairKey = paraGroupIter->second;
+			ConfigFileImplement::Pair::iterator paraKeyIter = pairKey.find(key);
+			if (paraKeyIter != pairKey.end())
+			{
+				*value = paraKeyIter->second;
+			}
+			else
+			{
+				error_info_ = "key值没有匹配上";
+				return false;
+			}
+		}
+		else
+		{
+			error_info_ = "group值没有匹配上";
+			return false;
+		}
+		return true;
+	}
+
+	bool ConfigFile::ConfigFileImplement::AddValue(const std::string &group, const std::string &key, const std::string &value)
+	{
+		std::string temp_group(group);
+		std::string temp_key(key);
+		ConfigFileImplement::TrimString(&temp_group);
+		ConfigFileImplement::TrimString(&temp_key);
+		modifyed_flag_ = true;
+		ConfigFileImplement::Pair &pairKey = paragraph_group_[group];
+		pairKey[key] = value;
+		return true;
+	}
+
 }
 
