@@ -37,19 +37,6 @@ namespace js
 		config_file_implement_->modifyed_flag_ = false;
 	}
 
-	ConfigFile::ConfigFile(const char *file_name, const char *delimiter, const char *comment_symbol) :
-		config_file_implement_(new ConfigFileImplement)
-	{
-		assert(file_name);
-		assert(delimiter);
-		assert(comment_symbol);
-		config_file_implement_->file_name_ = file_name;
-		config_file_implement_->delimiter_ = delimiter;
-		config_file_implement_->comment_symbol_ = comment_symbol;
-		config_file_implement_->modifyed_flag_ = false;
-		LoadFile(file_name, delimiter, comment_symbol);
-	}
-
 	ConfigFile::~ConfigFile()
 	{
 		if (config_file_implement_->modifyed_flag_)
@@ -67,16 +54,17 @@ namespace js
 		config_file_implement_->delimiter_ = delimiter;
 		config_file_implement_->comment_symbol_ = comment_symbol;
 		config_file_implement_->paragraph_group_.clear();
-		std::ifstream file(config_file_implement_->file_name_);
-		if (!file)
+		std::ifstream file;
+		file.open(config_file_implement_->file_name_.c_str(), std::ios::in | std::ios::out);
+		if (!file.is_open())
 		{
 			config_file_implement_->error_info_ = "文件打开失败！";
 			return false;
 		}
-		ConfigFileImplement::Pair pairKey;
-		std::string currentGroup = kDefaultGroup;
+		ConfigFileImplement::Pair pair_key;
+		std::string current_group = kDefaultGroup;
 		std::string line;
-		const std::string::size_type delimLength = config_file_implement_->delimiter_.length();
+		const std::string::size_type delimiter_length = config_file_implement_->delimiter_.length();
 		while (getline(file, line))
 		{
 			config_file_implement_->TrimString(&line);
@@ -84,33 +72,43 @@ namespace js
 			{
 				continue;
 			}
-			std::string::size_type commentIndex = line.find(config_file_implement_->comment_symbol_);
-			if ((commentIndex != std::string::npos) && (commentIndex != 0))
+			const std::string::size_type comment_index = line.find(config_file_implement_->comment_symbol_);
+			if ((comment_index != std::string::npos) && (comment_index != 0))
 			{
-				line = line.substr(0, commentIndex);
+				line = line.substr(0, comment_index);
 			}
 
-			std::string::size_type index = line.find(config_file_implement_->delimiter_);
+			const std::string::size_type index = line.find(config_file_implement_->delimiter_);
 			if (index != std::string::npos)
 			{
 				std::string key = line.substr(0, index);
-				line.replace(0, index + delimLength, "");
+				line.replace(0, index + delimiter_length, "");
 				ConfigFile::config_file_implement_->TrimString(&key);
 				ConfigFile::config_file_implement_->TrimString(&line);
-				pairKey[key] = line;
+				pair_key[key] = line;
 			}
 			else
 			{
 				if (line[0] == '[' && line[line.length() - 1] == ']')
 				{
 					line.erase(line.length() - 1);
-					line.erase(0, 1);
-					config_file_implement_->paragraph_group_[currentGroup] = pairKey;
-					currentGroup = line;
-					pairKey.clear();
+					line.erase(0, 1);				
+					current_group = line;
+					if (config_file_implement_->paragraph_group_.find(current_group) != config_file_implement_->paragraph_group_.end())
+					{
+						config_file_implement_->error_info_ = "当前组名已存在！";
+						return false;
+					}
+					config_file_implement_->paragraph_group_[current_group] = pair_key;
+					
+					pair_key.clear();
+				}
+				else
+				{
+					continue;
 				}
 			}
-			config_file_implement_->paragraph_group_[currentGroup] = pairKey;
+			config_file_implement_->paragraph_group_[current_group] = pair_key;
 		}
 		file.close();
 		return true;
@@ -256,6 +254,7 @@ namespace js
 			config_file_implement_->error_info_ = "group值没有匹配上";
 			return false;
 		}
+		config_file_implement_->modifyed_flag_ = true;
 		return true;
 	}
 

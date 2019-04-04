@@ -20,7 +20,6 @@ namespace js
 	{
 	public:
 		ConfigFile();
-        ConfigFile(const char *file_name, const char *delimiter = "=", const char *comment_symbol = "#");
 		~ConfigFile();
 		bool LoadFile(const char *file_name, const char *delimiter = "=", const char *comment_symbol = "#");
         bool FileExist(const char *file_name);
