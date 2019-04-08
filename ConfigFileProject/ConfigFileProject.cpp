@@ -36,7 +36,7 @@
 int main()
 {
 	js::ConfigFile config_file;
-	config_file.LoadFile("SynSmbDrv.ini", "=", ";");
+	config_file.LoadFile("SynSmbDrv.ini");
 	config_file.SaveFileAs("js.ini");
 	system("pause");
     return 0;
