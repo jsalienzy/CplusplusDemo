@@ -10,7 +10,7 @@
 
 namespace js 
 {
-	const std::string kDefaultGroup("default");
+	const std::string kDefaultGroup("_default");
 
 	class ConfigFile::ConfigFileImplement
 	{
@@ -37,19 +37,6 @@ namespace js
 		config_file_implement_->modifyed_flag_ = false;
 	}
 
-	ConfigFile::ConfigFile(const char *file_name, const char *delimiter, const char *comment_symbol) :
-		config_file_implement_(new ConfigFileImplement)
-	{
-		assert(file_name);
-		assert(delimiter);
-		assert(comment_symbol);
-		config_file_implement_->file_name_ = file_name;
-		config_file_implement_->delimiter_ = delimiter;
-		config_file_implement_->comment_symbol_ = comment_symbol;
-		config_file_implement_->modifyed_flag_ = false;
-		LoadFile(file_name, delimiter, comment_symbol);
-	}
-
 	ConfigFile::~ConfigFile()
 	{
 		if (config_file_implement_->modifyed_flag_)
@@ -58,25 +45,26 @@ namespace js
 		}
 	}
 
-	bool ConfigFile::LoadFile(const char *file_name, const char *delimiter, const char *comment_symbol)
+	bool ConfigFile::LoadFile(const char *file_name)
 	{
-		assert(file_name);
-		assert(delimiter);
-		assert(comment_symbol);
+		if (file_name == nullptr)
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		config_file_implement_->file_name_ = file_name;
-		config_file_implement_->delimiter_ = delimiter;
-		config_file_implement_->comment_symbol_ = comment_symbol;
 		config_file_implement_->paragraph_group_.clear();
-		std::ifstream file(config_file_implement_->file_name_);
-		if (!file)
+		std::ifstream file;
+		file.open(config_file_implement_->file_name_.c_str(), std::ios::in | std::ios::out);
+		if (!file.is_open())
 		{
 			config_file_implement_->error_info_ = "文件打开失败！";
 			return false;
 		}
-		ConfigFileImplement::Pair pairKey;
-		std::string currentGroup = kDefaultGroup;
+		ConfigFileImplement::Pair pair_key;
+		std::string current_group = kDefaultGroup;
 		std::string line;
-		const std::string::size_type delimLength = config_file_implement_->delimiter_.length();
+		const std::string::size_type delimiter_length = config_file_implement_->delimiter_.length();
 		while (getline(file, line))
 		{
 			config_file_implement_->TrimString(&line);
@@ -84,33 +72,43 @@ namespace js
 			{
 				continue;
 			}
-			std::string::size_type commentIndex = line.find(config_file_implement_->comment_symbol_);
-			if ((commentIndex != std::string::npos) && (commentIndex != 0))
+			const std::string::size_type comment_index = line.find(config_file_implement_->comment_symbol_);
+			if ((comment_index != std::string::npos) && (comment_index != 0))
 			{
-				line = line.substr(0, commentIndex);
+				line = line.substr(0, comment_index);
 			}
 
-			std::string::size_type index = line.find(config_file_implement_->delimiter_);
+			const std::string::size_type index = line.find(config_file_implement_->delimiter_);
 			if (index != std::string::npos)
 			{
 				std::string key = line.substr(0, index);
-				line.replace(0, index + delimLength, "");
+				line.replace(0, index + delimiter_length, "");
 				ConfigFile::config_file_implement_->TrimString(&key);
 				ConfigFile::config_file_implement_->TrimString(&line);
-				pairKey[key] = line;
+				pair_key[key] = line;
 			}
 			else
 			{
 				if (line[0] == '[' && line[line.length() - 1] == ']')
 				{
 					line.erase(line.length() - 1);
-					line.erase(0, 1);
-					config_file_implement_->paragraph_group_[currentGroup] = pairKey;
-					currentGroup = line;
-					pairKey.clear();
+					line.erase(0, 1);				
+					current_group = line;
+					if (config_file_implement_->paragraph_group_.find(current_group) != config_file_implement_->paragraph_group_.end())
+					{
+						config_file_implement_->error_info_ = "当前组名已存在！";
+						return false;
+					}
+					config_file_implement_->paragraph_group_[current_group] = pair_key;
+					
+					pair_key.clear();
+				}
+				else
+				{
+					continue;
 				}
 			}
-			config_file_implement_->paragraph_group_[currentGroup] = pairKey;
+			config_file_implement_->paragraph_group_[current_group] = pair_key;
 		}
 		file.close();
 		return true;
@@ -118,7 +116,11 @@ namespace js
 
 	bool ConfigFile::FileExist(const char *file_name)
 	{
-		assert(file_name);
+		if (file_name == nullptr)
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		std::ifstream file(file_name);
 		if (!file)
 		{
@@ -128,10 +130,15 @@ namespace js
 		return true;
 	}
 
-	void ConfigFile::SetFileName(const char *file_name)
+	bool ConfigFile::SetFileName(const char *file_name)
 	{
-		assert(file_name);
+		if (file_name == nullptr)
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		config_file_implement_->file_name_ = file_name;
+		return true;
 	}
 
 	const char *ConfigFile::GetFileName() const
@@ -149,16 +156,26 @@ namespace js
 		return config_file_implement_->comment_symbol_.c_str();
 	}
 
-	void ConfigFile::SetDelimiter(const char *delimiter)
+	bool ConfigFile::SetDelimiter(const char *delimiter)
 	{
-		assert(delimiter);
+		if (delimiter == nullptr)
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		config_file_implement_->delimiter_ = delimiter;
+		return true;
 	}
 
-	void ConfigFile::SetCommentSymbol(const char *comment_symbol)
+	bool ConfigFile::SetCommentSymbol(const char *comment_symbol)
 	{
-		assert(comment_symbol);
+		if (comment_symbol == nullptr)
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		config_file_implement_->comment_symbol_ = comment_symbol;
+		return true;
 	}
 
 	bool ConfigFile::SaveFile()
@@ -204,38 +221,52 @@ namespace js
 
 	bool ConfigFile::AddString(const char *key, const char *value, const char *group)
 	{
-		assert(key);
-		assert(value);
-		assert(group);
+		if ((key == nullptr) || (value == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		return config_file_implement_->AddValue(group, key, value);
 	}
 
 	bool ConfigFile::AddInteger(const char *key, int value, const char *group)
 	{
-		assert(key);
-		assert(group);
+		if ((key == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		return config_file_implement_->AddValue(group, key, std::to_string(value));
 	}
 
 	bool ConfigFile::AddDouble(const char *key, double value, const char *group)
 	{
-		assert(key);
-		assert(group);
+		if ((key == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		return config_file_implement_->AddValue(group, key, std::to_string(value));
 	}
 
 	bool ConfigFile::AddBoolean(const char *key, bool value, const char *group)
 	{
-		assert(key);
-		assert(group);
+		if ((key == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		std::string str = value ? "true" : "false";
 		return config_file_implement_->AddValue(group, key, str);
 	}
 
 	bool ConfigFile::Remove(const char *key, const char *group)
 	{
-		assert(key);
-		assert(group);
+		if ((key == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		ConfigFileImplement::Paragraph::iterator paraGroupIter = config_file_implement_->paragraph_group_.find(group);
 		if (paraGroupIter != config_file_implement_->paragraph_group_.end())
 		{
@@ -256,22 +287,27 @@ namespace js
 			config_file_implement_->error_info_ = "group值没有匹配上";
 			return false;
 		}
+		config_file_implement_->modifyed_flag_ = true;
 		return true;
 	}
 
 	bool ConfigFile::SetString(const char *key, const char *value, const char *group)
 	{
-		assert(key);
-		assert(value);
-		assert(group);
+		if ((key == nullptr) || (value == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		return config_file_implement_->SetValue(group, key, value);
 	}
 
 	bool ConfigFile::GetString(const char *key, char *value, int size, const char *group)
 	{
-		assert(key);
-		assert(value);
-		assert(group);
+		if ((key == nullptr) || (value == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		std::string string_value;
 		if (!config_file_implement_->GetValue(group, key, &string_value))
 		{
@@ -284,16 +320,21 @@ namespace js
 
 	bool ConfigFile::SetInteger(const char *key, int value, const char *group)
 	{
-		assert(key);
-		assert(group);
+		if ((key == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		return config_file_implement_->SetValue(group, key, std::to_string(value));
 	}
 
 	bool ConfigFile::GetInteger(const char *key, int *value, const char *group)
 	{
-		assert(key);
-		assert(value);
-		assert(group);
+		if ((key == nullptr) || (value == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		std::string str;
 		if (!config_file_implement_->GetValue(group, key, &str))
 		{
@@ -314,16 +355,21 @@ namespace js
 
 	bool ConfigFile::SetDouble(const char *key, double value, const char *group)
 	{
-		assert(key);
-		assert(group);
+		if ((key == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		return config_file_implement_->SetValue(group, key, std::to_string(value));
 	}
 
 	bool ConfigFile::GetDouble(const char *key, double *value, const char *group)
 	{
-		assert(key);
-		assert(value);
-		assert(group);
+		if ((key == nullptr) || (value == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		std::string str;
 		if (!config_file_implement_->GetValue(group, key, &str))
 		{
@@ -344,17 +390,22 @@ namespace js
 
 	bool ConfigFile::SetBoolean(const char *key, bool value, const char *group)
 	{
-		assert(key);
-		assert(group);
+		if ((key == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		std::string str = value ? "true" : "false";
 		return config_file_implement_->SetValue(group, key, str);
 	}
 
 	bool ConfigFile::GetBoolean(const char *key, bool *value, const char *group)
 	{
-		assert(key);
-		assert(value);
-		assert(group);
+		if ((key == nullptr) || (value == nullptr) || (group == nullptr))
+		{
+			config_file_implement_->error_info_ = "输入为空指针！";
+			return false;
+		}
 		std::string str;
 		if (!config_file_implement_->GetValue(group, key, &str))
 		{
@@ -387,7 +438,10 @@ namespace js
 
 	bool ConfigFile::ConfigFileImplement::TrimString(std::string *str)
 	{
-		assert(str);
+		if (str == nullptr)
+		{
+			return false;
+		}
 		size_t pos = 0;
 		if (str->length() == 0)
 		{
@@ -438,7 +492,11 @@ namespace js
 
 	bool ConfigFile::ConfigFileImplement::GetValue(const std::string &group, const std::string &key, std::string *value)
 	{
-		assert(value);
+		if (value == nullptr)
+		{
+			error_info_ = "输入为空指针！";
+			return false;
+		}
 		ConfigFileImplement::Paragraph::iterator paraGroupIter = paragraph_group_.find(group);
 		if (paraGroupIter != paragraph_group_.end())
 		{
@@ -468,9 +526,14 @@ namespace js
 		std::string temp_key(key);
 		ConfigFileImplement::TrimString(&temp_group);
 		ConfigFileImplement::TrimString(&temp_key);
-		modifyed_flag_ = true;
+		if (paragraph_group_[group].find(key) != paragraph_group_[group].end())
+		{
+			error_info_ = "当前key值已存在";
+			return false;
+		}
 		ConfigFileImplement::Pair &pairKey = paragraph_group_[group];
 		pairKey[key] = value;
+		modifyed_flag_ = true;
 		return true;
 	}
 
